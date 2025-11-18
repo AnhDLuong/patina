@@ -59,7 +59,7 @@ mod protocol_db;
 mod protocols;
 mod runtime;
 mod systemtables;
-mod tpl_lock;
+mod tpl_mutex;
 
 #[cfg(test)]
 #[macro_use]
@@ -514,8 +514,6 @@ impl Core<Alloc> {
             boot_services_ptr = st.boot_services_mut() as *mut efi::BootServices;
             runtime_services_ptr = st.runtime_services_mut() as *mut efi::RuntimeServices;
         }
-
-        tpl_lock::init_boot_services(boot_services_ptr);
 
         memory_attributes_table::init_memory_attributes_table_support();
 
