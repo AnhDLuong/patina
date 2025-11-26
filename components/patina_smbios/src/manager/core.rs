@@ -48,7 +48,7 @@ pub const SMBIOS_3_X_TABLE_GUID: efi::Guid =
 /// SMBIOS 3.0 entry point structure (64-bit)
 /// Per SMBIOS 3.0+ specification section 5.2.2
 #[repr(C, packed)]
-#[derive(Clone, Copy, IntoBytes, Immutable)]
+#[derive(Clone, Copy, DeriveIntoBytes, Immutable)]
 pub struct Smbios30EntryPoint {
     /// Anchor string "_SM3_" (0x00)
     pub anchor_string: [u8; 5],
@@ -163,12 +163,12 @@ impl SmbiosManager {
         // Allocate table buffer
         let table_pages = uefi_size_to_pages!(self.table_buffer_max_size);
         let table_addr = boot_services
-            .allocate_pages(AllocType::AnyPage, MemoryType::ACPI_RECLAIM_MEMORY, table_pages)
+            .allocate_pages(AllocType::AnyPage, EfiMemoryType::ACPIReclaimMemory, table_pages)
             .map_err(|_| SmbiosError::AllocationFailed)?;
 
         // Allocate entry point buffer (1 page is plenty)
         let ep_addr = boot_services
-            .allocate_pages(AllocType::AnyPage, MemoryType::ACPI_RECLAIM_MEMORY, 1)
+            .allocate_pages(AllocType::AnyPage, EfiMemoryType::ACPIReclaimMemory, 1)
             .map_err(|_| SmbiosError::AllocationFailed)?;
 
         *self.table_buffer_addr.borrow_mut() = Some(table_addr as u64);
@@ -329,129 +329,6 @@ impl SmbiosManager {
         Ok(candidate)
     }
 
-<<<<<<< HEAD
-    /// Builds the SMBIOS table and installs it in the UEFI Configuration Table
-    ///
-    /// This function performs the following steps:
-    /// 1. Consolidates all SMBIOS records into a contiguous memory buffer
-    /// 2. Creates an SMBIOS 3.x Entry Point Structure with proper checksum
-    /// 3. Allocates ACPI Reclaim memory for both the table and entry point
-    /// 4. Installs the entry point via the UEFI Configuration Table
-    ///
-    /// # Arguments
-    ///
-    /// * `boot_services` - UEFI Boot Services for memory allocation and table installation
-    ///
-    /// # Returns
-    ///
-    /// Returns a tuple of `(table_address, entry_point_address)` containing the physical
-    /// addresses where the SMBIOS table data and entry point structure were allocated.
-    ///
-    /// # Errors
-    ///
-    /// * `SmbiosError::NoRecordsAvailable` - No SMBIOS records have been added
-    /// * `SmbiosError::AllocationFailed` - Failed to allocate memory or install the configuration table
-    ///
-    /// # Safety
-    ///
-    /// This function uses unsafe code for:
-    /// - Creating mutable slices to allocated memory
-    /// - Writing the entry point structure to allocated memory
-    /// - Calling the UEFI `install_configuration_table` interface
-    ///
-    /// All memory allocations use UEFI Boot Services and are properly tracked by the firmware.
-    pub fn install_configuration_table(
-        &self,
-        boot_services: &patina::boot_services::StandardBootServices,
-    ) -> Result<(PhysicalAddress, PhysicalAddress), SmbiosError> {
-        let records = self.records.borrow();
-
-        // Step 1: Calculate total table size
-        let total_table_size: usize = records.iter().map(|r| r.data.len()).sum();
-
-        if total_table_size == 0 {
-            log::error!("Cannot install configuration table: no SMBIOS records have been added");
-            return Err(SmbiosError::NoRecordsAvailable);
-        }
-
-        // Step 2: Allocate memory for the table (using UEFI Boot Services memory allocation)
-        let table_pages = uefi_size_to_pages!(total_table_size);
-        let table_address = boot_services
-            .allocate_pages(
-                AllocType::AnyPage,
-                EfiMemoryType::ACPIReclaimMemory, // SMBIOS tables go in ACPI Reclaim memory
-                table_pages,
-            )
-            .map_err(|_| SmbiosError::AllocationFailed)?;
-
-        // Step 3: Copy all records to the table
-        // SAFETY: `table_address` was just successfully allocated by UEFI Boot Services for
-        // `total_table_size` bytes. The memory is valid, properly aligned, and exclusively owned
-        // by this function. The size matches our calculation, making this slice creation safe.
-        let table_slice = unsafe { core::slice::from_raw_parts_mut(table_address as *mut u8, total_table_size) };
-        let mut offset = 0;
-
-        for record in records.iter() {
-            let record_bytes = record.data.as_slice();
-            table_slice[offset..offset + record_bytes.len()].copy_from_slice(record_bytes);
-            offset += record_bytes.len();
-        }
-
-        // Step 4: Create SMBIOS 3.0+ Entry Point Structure
-        let mut entry_point = Smbios30EntryPoint {
-            anchor_string: *b"_SM3_",
-            checksum: 0,
-            length: core::mem::size_of::<Smbios30EntryPoint>() as u8,
-            major_version: self.major_version,
-            minor_version: self.minor_version,
-            docrev: 0,
-            entry_point_revision: 1,
-            reserved: 0,
-            table_max_size: total_table_size as u32,
-            table_address: table_address as u64,
-        };
-
-        // Calculate checksum
-        entry_point.checksum = Self::calculate_checksum(&entry_point);
-
-        // Step 5: Allocate memory for entry point structure
-        let ep_pages = 1; // Entry point fits in one page
-        let ep_address = boot_services
-            .allocate_pages(AllocType::AnyPage, EfiMemoryType::ACPIReclaimMemory, ep_pages)
-            .map_err(|_| SmbiosError::AllocationFailed)?;
-
-        // Step 6: Copy entry point to allocated memory
-        let ep_bytes = entry_point.as_bytes();
-        // SAFETY: `ep_address` was just successfully allocated by UEFI Boot Services for one page.
-        // The size `core::mem::size_of::<Smbios30EntryPoint>()` (24 bytes) fits well within one page (4KB).
-        // The memory is valid, properly aligned, and exclusively owned by this function.
-        let ep_slice = unsafe {
-            core::slice::from_raw_parts_mut(ep_address as *mut u8, core::mem::size_of::<Smbios30EntryPoint>())
-        };
-        ep_slice.copy_from_slice(ep_bytes);
-
-        // Step 7: Install in UEFI Configuration Table
-        // SAFETY: We're calling the UEFI `install_configuration_table` function with:
-        // - A valid GUID reference (&SMBIOS_3_X_TABLE_GUID)
-        // - A valid pointer to the entry point structure we just allocated and initialized
-        // The pointer remains valid for the system's lifetime as it's in ACPI_RECLAIM_MEMORY.
-        unsafe {
-            boot_services.install_configuration_table(&SMBIOS_3_X_TABLE_GUID, ep_address as *mut ()).map_err(|e| {
-                log::error!("Failed to install SMBIOS configuration table: {:?}", e);
-                SmbiosError::AllocationFailed
-            })?;
-        }
-
-        // Store addresses for future reference
-        drop(records); // Release borrow before mutating
-        self.entry_point_64.replace(Some(Box::new(entry_point)));
-        self.table_64_address.replace(Some(table_address as u64));
-
-        Ok((table_address as u64, ep_address as u64))
-    }
-
-=======
->>>>>>> b31bafa (smbios: replace TplMutex with RefCell and auto-add End-of-Table marker)
     /// Calculate checksum for SMBIOS 3.x Entry Point Structure
     ///
     /// Computes the checksum byte value such that the sum of all bytes in the
@@ -569,25 +446,30 @@ impl SmbiosManager {
         producer_handle: Option<Handle>,
         record_data: &[u8],
     ) -> Result<SmbiosHandle, SmbiosError> {
+        log::error!("ALDBG manager - add_from_bytes");
         // Step 1: Validate minimum size for header (at least 4 bytes)
         if record_data.len() < core::mem::size_of::<SmbiosTableHeader>() {
+            log::error!("ALDBG manager - add_from_bytes - header size RecordTooSmall");
             return Err(SmbiosError::RecordTooSmall);
         }
 
         // Step 2: Parse and validate header using zerocopy
         let (header_ref, _rest) = Ref::<&[u8], SmbiosTableHeader>::from_prefix(record_data)
             .map_err(|_| SmbiosError::MalformedRecordHeader)?;
+        log::error!("ALDBG manager - add_from_bytes - header validated");
         let header: &SmbiosTableHeader = &header_ref;
 
         // Step 3: Reject Type 127 End-of-Table marker - it's automatically managed
         // The manager adds Type 127 during initialization, and it must remain unique and last
         if header.record_type == 127 {
+            log::error!("ALDBG manager - add_from_bytes - Reject Type 127 End-of-Table marker");
             return Err(SmbiosError::Type127Managed);
         }
 
         // Step 4: Validate header->length is <= (record_data.length - 2) for string pool
         // The string pool needs at least 2 bytes for the double-null terminator
         if (header.length as usize + 2) > record_data.len() {
+            log::error!("ALDBG manager - add_from_bytes - double terminator RecordTooSmall");
             return Err(SmbiosError::RecordTooSmall);
         }
 
@@ -596,11 +478,13 @@ impl SmbiosManager {
         let string_pool_area = &record_data[string_pool_start..];
 
         if string_pool_area.len() < 2 {
+            log::error!("ALDBG manager - add_from_bytes - string pool too small");
             return Err(SmbiosError::StringPoolTooSmall);
         }
 
         // Step 6: Validate string pool format and count strings
         let string_count = Self::validate_and_count_strings(string_pool_area)?;
+        log::error!("ALDBG manager - add_from_bytes - validate_and_count_strings done");
 
         // If all validation passes, allocate handle and build record
         let smbios_handle = self.allocate_handle()?;
@@ -622,8 +506,10 @@ impl SmbiosManager {
         // Insert before Type 127 if present, otherwise append
         if let Some(pos) = records.iter().position(|r| r.header.record_type == 127) {
             records.insert(pos, smbios_record);
+            log::error!("ALDBG manager - add_from_bytes - insert 127 done");
         } else {
             records.push(smbios_record);
+            log::error!("ALDBG manager - add_from_bytes - push 127 done");
         }
 
         Ok(smbios_handle)
