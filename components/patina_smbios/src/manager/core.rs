@@ -81,6 +81,7 @@ pub struct Smbios30EntryPoint {
 pub struct SmbiosManager {
     pub(super) records: RefCell<Vec<SmbiosRecord>>,
     pub(super) next_handle: RefCell<SmbiosHandle>,
+    pub(super) used_handles: RefCell<Vec<SmbiosHandle>>,
     pub(super) freed_handles: RefCell<Vec<SmbiosHandle>>,
     pub major_version: u8,
     pub minor_version: u8,
@@ -120,6 +121,7 @@ impl SmbiosManager {
         Ok(Self {
             records: RefCell::new(Vec::new()),
             next_handle: RefCell::new(1),
+            used_handles: RefCell::new(Vec::new()),
             freed_handles: RefCell::new(Vec::new()),
             major_version,
             minor_version,
@@ -301,6 +303,91 @@ impl SmbiosManager {
         strings
     }
 
+    fn validate_handle(&self, request_handle: &SmbiosHandle) -> Result<SmbiosHandle, SmbiosError> {
+        log::error!("ALDBG validate_handle - request_handle = {}", *request_handle);
+        // if *request_handle > SMBIOS_HANDLE_PI_RESERVED {
+        //     log::error!("ALDBG validate_handle - HandleOutOfRange");
+        //     return Err(SmbiosError::HandleOutOfRange);
+        // }
+
+        if !(0..=SMBIOS_HANDLE_PI_RESERVED).contains(&request_handle) {
+            log::error!("ALDBG validate_handle - HandleOutOfRange");
+            return Err(SmbiosError::HandleOutOfRange);
+        }
+
+        // if *request_handle < SMBIOS_HANDLE_PI_RESERVED && !self.freed_handles.borrow().contains(request_handle) {
+        //     log::error!("ALDBG HandleAlreadyStarted");
+        //     return Err(SmbiosError::HandleAlreadyStarted);
+        // }
+
+        // let freed = self.freed_handles.borrow();
+        // let count = freed.len();
+        // log::error!("ALDBG validate_handle - count = {}", count);
+
+        // for handle in freed.iter() {
+        //     log::error!("ALDBG validate_handle - handle = {}", handle);
+        // }
+
+        // if *request_handle < SMBIOS_HANDLE_PI_RESERVED && freed.contains(request_handle) {
+        //     log::error!("ALDBG validate_handle - HandleAlreadyStarted");
+        //     return Err(SmbiosError::HandleAlreadyStarted);
+        // }
+
+        if self.used_handles.borrow().contains(request_handle) {
+            log::error!("ALDBG validate_handle - HandleAlreadyStarted");
+            return Err(SmbiosError::HandleAlreadyStarted);
+        }
+
+        let mut handle = *request_handle;
+
+        if *request_handle == SMBIOS_HANDLE_PI_RESERVED {
+            handle = self.allocate_handle()?;
+            log::error!("ALDBG validate_handle - handle = {}", handle);
+        }
+
+        self.used_handles.borrow_mut().push(handle);
+
+        Ok(handle)
+    }
+
+    // Called when the request handle is NOT FFFE. Checks if the handle is within valid range (0..FFFE)
+    // and if the handle is already in use. If so, returns an error. Otherwise, returns the handle.
+    fn check_handle(&self, request_handle: &SmbiosHandle) -> Result<SmbiosHandle, SmbiosError> {
+        log::error!("ALDBG check_handle - request_handle = {}", *request_handle);
+        if !(0..SMBIOS_HANDLE_PI_RESERVED).contains(&request_handle) {
+            log::error!("ALDBG validate_handle - HandleOutOfRange");
+            return Err(SmbiosError::HandleOutOfRange);
+        }
+
+        if self.used_handles.borrow().contains(request_handle) {
+            log::error!("ALDBG validate_handle - HandleAlreadyStarted");
+            return Err(SmbiosError::HandleAlreadyStarted);
+        }
+
+        Ok(*request_handle)
+    }
+
+    // Assign a unique handle between 0..FFFE . Only gets here when the request handle is FFFE
+    fn alloc_handle_new(&self) -> Result<SmbiosHandle, SmbiosError> {
+        if let Some(handle) = (0..SMBIOS_HANDLE_PI_RESERVED).find(|x| !self.used_handles.borrow().contains(x)) {
+            self.used_handles.borrow_mut().push(handle);
+            Ok(handle)
+        } else {
+            Err(SmbiosError::HandleExhausted)
+        }
+    }
+
+    pub(crate) fn get_handle(&self, request_handle: &SmbiosHandle) -> Result<SmbiosHandle, SmbiosError> {
+        log::error!("ALDBG get_handle - request_handle = {}", *request_handle);
+        if *request_handle == SMBIOS_HANDLE_PI_RESERVED {
+            log::error!("ALDBG get_handle - *request_handle == SMBIOS_HANDLE_PI_RESERVED");
+            self.alloc_handle_new()
+        } else {
+            log::error!("ALDBG get_handle - *request_handle != SMBIOS_HANDLE_PI_RESERVED");
+            self.check_handle(request_handle)
+        }
+    }
+
     /// Allocate a new handle using a free list for efficient O(1) allocation
     ///
     /// This implementation maintains a free list of previously freed handles to avoid
@@ -310,10 +397,10 @@ impl SmbiosManager {
     /// 3. If next_handle reaches the reserved range (0xFFFE), wrap to 1
     /// 4. If all handles are exhausted, return OutOfResources
     pub(super) fn allocate_handle(&self) -> Result<SmbiosHandle, SmbiosError> {
-        // First, try to reuse a freed handle (most efficient)
-        if let Some(handle) = self.freed_handles.borrow_mut().pop() {
-            return Ok(handle);
-        }
+        // // First, try to reuse a freed handle (most efficient)
+        // if let Some(handle) = self.freed_handles.borrow_mut().pop() {
+        //     return Ok(handle);
+        // }
 
         // No freed handles available, use next_handle
         let candidate = *self.next_handle.borrow();
@@ -448,7 +535,7 @@ impl SmbiosManager {
     ) -> Result<SmbiosHandle, SmbiosError> {
         // Step 1: Validate minimum size for header (at least 4 bytes)
         if record_data.len() < core::mem::size_of::<SmbiosTableHeader>() {
-            log::error!("add_from_bytes - header size RecordTooSmall");
+            log::error!("Error - minimum size for header is too small");
             return Err(SmbiosError::RecordTooSmall);
         }
 
@@ -484,7 +571,10 @@ impl SmbiosManager {
         let string_count = Self::validate_and_count_strings(string_pool_area)?;
 
         // If all validation passes, allocate handle and build record
-        let smbios_handle = self.allocate_handle()?;
+        let request_handle = header.handle;
+        let smbios_handle = self.get_handle(&request_handle)?;
+
+        // let smbios_handle = self.allocate_handle()?;
 
         let record_header =
             SmbiosTableHeader { record_type: header.record_type, length: header.length, handle: smbios_handle };
@@ -593,6 +683,14 @@ impl SmbiosManager {
         // Add the freed handle to the free list for reuse
         // Only add valid handles (1..0xFFFE) to the free list
         if (1..SMBIOS_HANDLE_PI_RESERVED).contains(&smbios_handle) {
+            let pos_handle = self
+                .used_handles
+                .borrow()
+                .iter()
+                .position(|h| *h == smbios_handle)
+                .ok_or(SmbiosError::HandleNotFound)?;
+
+            self.used_handles.borrow_mut().swap_remove(pos_handle);
             self.freed_handles.borrow_mut().push(smbios_handle);
         }
 
@@ -1484,6 +1582,7 @@ mod tests {
         let manager2 = SmbiosManager {
             records: manager.records,
             next_handle: manager.next_handle,
+            used_hanldes: manager.used_handles,
             freed_handles: manager.freed_handles,
             major_version: 3,
             minor_version: 9,

@@ -40,6 +40,10 @@ pub enum SmbiosError {
     HandleNotFound,
     /// String index is out of range for the specified record
     StringIndexOutOfRange,
+    /// The specified handle was already used by another record
+    HandleAlreadyStarted,
+    /// The specified handle is out of range
+    HandleOutOfRange,
 
     // Resource allocation errors
     /// Failed to allocate memory for SMBIOS table or entry point
