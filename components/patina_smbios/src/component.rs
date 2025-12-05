@@ -89,12 +89,14 @@ impl SmbiosProvider {
     pub fn new(major_version: u8, minor_version: u8) -> Self {
         let config = SmbiosConfiguration::new(major_version, minor_version)
             .expect("Invalid SMBIOS version: only SMBIOS 3.x is supported");
+        log::debug!("ALDBG SmbiosProvider - new");
         Self { config }
     }
 
     /// Initialize the SMBIOS provider and register it as a service
     #[coverage(off)] // Component integration - tested via integration tests
     pub fn entry_point(self, storage: &mut Storage) -> Result<()> {
+        log::debug!("ALDBG patina_smbios - entry_point");
         let cfg = self.config;
 
         // Get boot_services from storage - it already has 'static lifetime
@@ -136,6 +138,7 @@ impl SmbiosProvider {
         {
             log::error!("Failed to install SMBIOS protocol: {:?}", e);
         }
+        log::debug!("ALDBG patina_smbios - install_smbios_protocol");
 
         // Register the leaked service (the IntoService impl for &'static T handles this)
         storage.add_service(smbios_static);

@@ -47,6 +47,7 @@ pub fn install_smbios_protocol(
     manager_cell: &'static ::core::cell::RefCell<SmbiosManager>,
     boot_services: &'static StandardBootServices,
 ) -> Result<efi::Handle, SmbiosError> {
+    log::error!("ALDBG install_smbios_protocol entry");
     // Create the protocol instance with internal struct
     let internal = SmbiosProtocolInternal::new(major_version, minor_version, manager_cell, boot_services);
     let interface = Box::into_raw(Box::new(internal));
@@ -62,6 +63,7 @@ pub fn install_smbios_protocol(
             interface as *mut _,
         )
     };
+    log::error!("ALDBG manager - install_smbios_protocol");
 
     match handle {
         Ok(h) => Ok(h),

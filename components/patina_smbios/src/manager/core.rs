@@ -446,30 +446,28 @@ impl SmbiosManager {
         producer_handle: Option<Handle>,
         record_data: &[u8],
     ) -> Result<SmbiosHandle, SmbiosError> {
-        log::error!("ALDBG manager - add_from_bytes");
         // Step 1: Validate minimum size for header (at least 4 bytes)
         if record_data.len() < core::mem::size_of::<SmbiosTableHeader>() {
-            log::error!("ALDBG manager - add_from_bytes - header size RecordTooSmall");
+            log::error!("add_from_bytes - header size RecordTooSmall");
             return Err(SmbiosError::RecordTooSmall);
         }
 
         // Step 2: Parse and validate header using zerocopy
         let (header_ref, _rest) = Ref::<&[u8], SmbiosTableHeader>::from_prefix(record_data)
             .map_err(|_| SmbiosError::MalformedRecordHeader)?;
-        log::error!("ALDBG manager - add_from_bytes - header validated");
         let header: &SmbiosTableHeader = &header_ref;
 
         // Step 3: Reject Type 127 End-of-Table marker - it's automatically managed
         // The manager adds Type 127 during initialization, and it must remain unique and last
         if header.record_type == 127 {
-            log::error!("ALDBG manager - add_from_bytes - Reject Type 127 End-of-Table marker");
+            log::error!("add_from_bytes - Reject Type 127 End-of-Table marker");
             return Err(SmbiosError::Type127Managed);
         }
 
         // Step 4: Validate header->length is <= (record_data.length - 2) for string pool
         // The string pool needs at least 2 bytes for the double-null terminator
         if (header.length as usize + 2) > record_data.len() {
-            log::error!("ALDBG manager - add_from_bytes - double terminator RecordTooSmall");
+            log::error!("add_from_bytes - double terminator RecordTooSmall");
             return Err(SmbiosError::RecordTooSmall);
         }
 
@@ -478,13 +476,12 @@ impl SmbiosManager {
         let string_pool_area = &record_data[string_pool_start..];
 
         if string_pool_area.len() < 2 {
-            log::error!("ALDBG manager - add_from_bytes - string pool too small");
+            log::error!("add_from_bytes - string pool too small");
             return Err(SmbiosError::StringPoolTooSmall);
         }
 
         // Step 6: Validate string pool format and count strings
         let string_count = Self::validate_and_count_strings(string_pool_area)?;
-        log::error!("ALDBG manager - add_from_bytes - validate_and_count_strings done");
 
         // If all validation passes, allocate handle and build record
         let smbios_handle = self.allocate_handle()?;
@@ -506,10 +503,8 @@ impl SmbiosManager {
         // Insert before Type 127 if present, otherwise append
         if let Some(pos) = records.iter().position(|r| r.header.record_type == 127) {
             records.insert(pos, smbios_record);
-            log::error!("ALDBG manager - add_from_bytes - insert 127 done");
         } else {
             records.push(smbios_record);
-            log::error!("ALDBG manager - add_from_bytes - push 127 done");
         }
 
         Ok(smbios_handle)

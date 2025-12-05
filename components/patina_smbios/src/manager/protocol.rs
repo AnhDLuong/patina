@@ -129,7 +129,7 @@ impl SmbiosProtocol {
         smbios_handle: *mut SmbiosHandle,
         record: *const SmbiosTableHeader,
     ) -> efi::Status {
-        log::error!("ALDBG add_ext");
+        log::debug!("ALDBG add_ext");
         // Safety checks
         if smbios_handle.is_null() || record.is_null() {
             return efi::Status::INVALID_PARAMETER;
@@ -245,7 +245,7 @@ impl SmbiosProtocol {
         string_number: *mut usize,
         string: *const c_char,
     ) -> efi::Status {
-        log::error!("ALDBG update_string_ext");
+        log::debug!("ALDBG update_string_ext");
         if smbios_handle.is_null() || string_number.is_null() || string.is_null() {
             return efi::Status::INVALID_PARAMETER;
         }
@@ -283,7 +283,7 @@ impl SmbiosProtocol {
 
     #[coverage(off)] // FFI function - tested via integration tests
     extern "efiapi" fn remove_ext(protocol: *const SmbiosProtocol, smbios_handle: SmbiosHandle) -> efi::Status {
-        log::error!("ALDBG remove_ext");
+        log::debug!("ALDBG remove_ext");
         // SAFETY: Cast from protocol pointer to internal struct pointer
         let internal = unsafe { &*(protocol as *const SmbiosProtocolInternal) };
         let manager = match internal.manager.try_borrow() {
@@ -306,7 +306,7 @@ impl SmbiosProtocol {
         record: *mut *mut SmbiosTableHeader,
         producer_handle: *mut efi::Handle,
     ) -> efi::Status {
-        log::error!("ALDBG get_next_ext");
+        log::debug!("ALDBG get_next_ext");
         if smbios_handle.is_null() || record.is_null() {
             return efi::Status::INVALID_PARAMETER;
         }

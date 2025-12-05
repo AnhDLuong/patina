@@ -277,14 +277,11 @@ impl Smbios for SmbiosImpl {
         producer_handle: Option<r_efi::efi::Handle>,
         bytes: &[u8],
     ) -> core::result::Result<SmbiosHandle, crate::error::SmbiosError> {
-        log::error!("ALDBG services - add_from_bytes");
         // Add record to manager
         let handle = {
             let manager = self.manager.try_borrow().map_err(|_| crate::error::SmbiosError::AlreadyBorrowed)?;
-            log::error!("ALDBG services - add_from_bytes - manager successfully borrowed");
             manager.add_from_bytes(producer_handle, bytes)?
         }; // Release borrow
-        log::error!("ALDBG services - add_from_bytes - manager successfully add_from_bytes");
 
         // Republish table with new record
         // This rebuilds into pre-allocated buffer and updates configuration table
