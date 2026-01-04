@@ -307,7 +307,7 @@ impl SmbiosManager {
     // and if the handle is already in use. If so, returns an error. Otherwise, returns the handle.
     fn check_handle(&self, request_handle: &SmbiosHandle) -> Result<SmbiosHandle, SmbiosError> {
         log::error!("check_handle - request_handle = {}", *request_handle);
-        if !(0..SMBIOS_HANDLE_PI_RESERVED).contains(&request_handle) {
+        if !(0..SMBIOS_HANDLE_PI_RESERVED).contains(request_handle) {
             log::error!("check_handle - HandleOutOfRange");
             return Err(SmbiosError::HandleOutOfRange);
         }
