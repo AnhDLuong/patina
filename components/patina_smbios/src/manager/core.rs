@@ -303,64 +303,17 @@ impl SmbiosManager {
         strings
     }
 
-    fn validate_handle(&self, request_handle: &SmbiosHandle) -> Result<SmbiosHandle, SmbiosError> {
-        log::error!("ALDBG validate_handle - request_handle = {}", *request_handle);
-        // if *request_handle > SMBIOS_HANDLE_PI_RESERVED {
-        //     log::error!("ALDBG validate_handle - HandleOutOfRange");
-        //     return Err(SmbiosError::HandleOutOfRange);
-        // }
-
-        if !(0..=SMBIOS_HANDLE_PI_RESERVED).contains(&request_handle) {
-            log::error!("ALDBG validate_handle - HandleOutOfRange");
-            return Err(SmbiosError::HandleOutOfRange);
-        }
-
-        // if *request_handle < SMBIOS_HANDLE_PI_RESERVED && !self.freed_handles.borrow().contains(request_handle) {
-        //     log::error!("ALDBG HandleAlreadyStarted");
-        //     return Err(SmbiosError::HandleAlreadyStarted);
-        // }
-
-        // let freed = self.freed_handles.borrow();
-        // let count = freed.len();
-        // log::error!("ALDBG validate_handle - count = {}", count);
-
-        // for handle in freed.iter() {
-        //     log::error!("ALDBG validate_handle - handle = {}", handle);
-        // }
-
-        // if *request_handle < SMBIOS_HANDLE_PI_RESERVED && freed.contains(request_handle) {
-        //     log::error!("ALDBG validate_handle - HandleAlreadyStarted");
-        //     return Err(SmbiosError::HandleAlreadyStarted);
-        // }
-
-        if self.used_handles.borrow().contains(request_handle) {
-            log::error!("ALDBG validate_handle - HandleAlreadyStarted");
-            return Err(SmbiosError::HandleAlreadyStarted);
-        }
-
-        let mut handle = *request_handle;
-
-        if *request_handle == SMBIOS_HANDLE_PI_RESERVED {
-            handle = self.allocate_handle()?;
-            log::error!("ALDBG validate_handle - handle = {}", handle);
-        }
-
-        self.used_handles.borrow_mut().push(handle);
-
-        Ok(handle)
-    }
-
     // Called when the request handle is NOT FFFE. Checks if the handle is within valid range (0..FFFE)
     // and if the handle is already in use. If so, returns an error. Otherwise, returns the handle.
     fn check_handle(&self, request_handle: &SmbiosHandle) -> Result<SmbiosHandle, SmbiosError> {
-        log::error!("ALDBG check_handle - request_handle = {}", *request_handle);
+        log::error!("check_handle - request_handle = {}", *request_handle);
         if !(0..SMBIOS_HANDLE_PI_RESERVED).contains(&request_handle) {
-            log::error!("ALDBG validate_handle - HandleOutOfRange");
+            log::error!("check_handle - HandleOutOfRange");
             return Err(SmbiosError::HandleOutOfRange);
         }
 
         if self.used_handles.borrow().contains(request_handle) {
-            log::error!("ALDBG validate_handle - HandleAlreadyStarted");
+            log::error!("check_handle - HandleAlreadyStarted");
             return Err(SmbiosError::HandleAlreadyStarted);
         }
 
@@ -378,12 +331,9 @@ impl SmbiosManager {
     }
 
     pub(crate) fn get_handle(&self, request_handle: &SmbiosHandle) -> Result<SmbiosHandle, SmbiosError> {
-        log::error!("ALDBG get_handle - request_handle = {}", *request_handle);
         if *request_handle == SMBIOS_HANDLE_PI_RESERVED {
-            log::error!("ALDBG get_handle - *request_handle == SMBIOS_HANDLE_PI_RESERVED");
             self.alloc_handle_new()
         } else {
-            log::error!("ALDBG get_handle - *request_handle != SMBIOS_HANDLE_PI_RESERVED");
             self.check_handle(request_handle)
         }
     }
